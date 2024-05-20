@@ -1,0 +1,66 @@
+model:
+  arch: timechat
+  model_type: pretrain_llama_v2
+  freeze_vit: True
+  freeze_qformer: True
+  max_txt_len: 2048
+  end_sym: "</s>"
+  low_resource: False
+
+  frozen_llama_proj: True
+  frozen_video_Qformer: True
+
+  vit_model: "ckpt/umt-l/l16_25m.pth"
+  vision_encoder:
+    name: "vit_l14"
+    img_size: 224
+    patch_size: 16
+    d_model: 1024
+    encoder_embed_dim: 1024
+    encoder_depth: 24
+    encoder_num_heads: 16
+    drop_path_rate: 0.0
+    num_frames: 32
+    tubelet_size: 1
+    use_checkpoint: false
+    checkpoint_num: 0
+    pretrained: ""
+    return_index: -2
+    vit_add_ln: true
+    ckpt_num_frame: 4
+
+  llama_model: "ckpt/Video-LLaMA-2-7B-Finetuned/llama-2-7b-chat-hf/"
+  q_former_model: "ckpt/instruct-blip/umt_l16_qformer.pth"
+  ckpt: "ckpt/timechat/timechat_7b.pth"
+
+  fusion_head_layers: 2
+  max_frame_pos: 96
+  fusion_header_type: "seqTransf"
+
+  use_grad_checkpoint: True
+  lora: True
+  lora_inference_mode: True
+  qformer_text_input: True
+  window_size: 32
+  stride: 32
+
+datasets:
+  webvid:
+    vis_processor:
+      train:
+        name: "alpro_video_eval"
+        n_frms: 96
+        image_size: 224
+    text_processor:
+      train:
+        name: "blip_caption"
+    num_video_query_token: 32
+    tokenizer_name: "ckpt/Video-LLaMA-2-7B-Finetuned/llama-2-7b-chat-hf/"
+    model_type: "llama_v2"
+    num_frm: 96
+    sample_type: 'uniform'
+    max_txt_len: 2048
+    stride: 32
+
+run:
+  task: video_text_pretrain
