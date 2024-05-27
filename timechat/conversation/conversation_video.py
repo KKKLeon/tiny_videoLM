@@ -264,6 +264,7 @@ class Chat:
             video = self.vis_processor.transform(video)
             video = video.unsqueeze(0).to(self.device) # B C T H W
             # print(image)
+            '''
             if self.model.qformer_text_input:
                 # timestamp
                 timestamps = msg.split('at')[1].replace('seconds.', '').strip().split(
@@ -276,6 +277,7 @@ class Chat:
                     max_length=32,
                     truncation=True,
                 )
+            '''
         else:
             raise NotImplementedError
         # conv.system = "You can understand the video that the user provides.  Follow the instructions carefully and explain your answers in detail."
