@@ -7,7 +7,7 @@ model:
   end_sym: "</s>"
   low_resource: False
 
-  frozen_llama_proj: True
+  frozen_llm_proj: True
   frozen_video_Qformer: True
 
   vit_model: "ckpt/umt-l/l16_25m.pth"
