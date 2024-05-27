@@ -154,6 +154,20 @@ default_conversation = Conversation(
     sep_style=SeparatorStyle.SINGLE,
     sep="###",
 )
+
+conv_phi_v0 = Conversation(
+    system="You are a helpful language and vision assistant. "
+           "You are able to understand the visual content that the user provides, "
+           "and assist the user with a variety of tasks using natural language.",
+    roles=("USER", "ASSISTANT"),
+    version="v0",
+    messages=(),
+    offset=0,
+    sep_style=SeparatorStyle.TWO,
+    sep=" ",
+    sep2="<|endoftext|>",
+)
+
 conv_llava_llama_2 = Conversation(
     system="You are a helpful language and vision assistant. "
            "You are able to understand the visual content that the user provides, "
