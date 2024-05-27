@@ -1,6 +1,6 @@
 model:
   arch: timechat
-  model_type: pretrain_llama_v2
+  model_type: phi2
   freeze_vit: True
   freeze_qformer: True
   max_txt_len: 2048
