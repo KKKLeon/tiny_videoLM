@@ -28,6 +28,7 @@ class TimeChat(Blip2Base):
 
     PRETRAINED_MODEL_CONFIG_DICT = {
         "pretrain_llama_v2": "configs/models/timechat.yaml",
+        "phi2": "configs/models/phi2.yaml"
     }
 
     @classmethod
