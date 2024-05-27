@@ -9,7 +9,7 @@ import torchshow as ts
 from timechat.common.config import Config
 from timechat.common.dist_utils import get_rank
 from timechat.common.registry import registry
-from timechat.conversation.conversation_video import Chat, Conversation, default_conversation,SeparatorStyle, conv_llava_llama_2
+from timechat.conversation.conversation_video import Chat, Conversation, default_conversation,SeparatorStyle, conv_phi_v0
 import decord
 import cv2
 import time
@@ -83,7 +83,7 @@ if __name__ == "__main__":
     ts.show(video.transpose(0, 1))
 
     img_list = []
-    chat_state = conv_llava_llama_2.copy()
+    chat_state = conv_phi_v0.copy()
     chat_state.system = "You are able to understand the visual content that the user provides. Follow the instructions carefully and explain your answers in detail."
     msg = chat.upload_video_without_audio(
         video_path=args.video_path,
