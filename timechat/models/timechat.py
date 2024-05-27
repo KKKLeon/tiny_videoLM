@@ -10,7 +10,7 @@ from timechat.common.registry import registry
 from timechat.models.blip2 import Blip2Base, disabled_train
 from timechat.models.modeling_llama import LlamaForCausalLM
 # from timechat.models.Qformer import BertEncoder
-from transformers import LlamaTokenizer, BertConfig
+from transformers import BertConfig, AutoTokenizer, AutoModelForCausalLM
 # from transformers.models.bert.modeling_bert import BertEncoder
 import einops
 import copy
@@ -60,7 +60,7 @@ class TimeChat(Blip2Base):
             freeze_vit=True,
             freeze_qformer=True,
             num_query_token=32,
-            llama_model="",
+            phi2_model="",
             prompt_path="",
             prompt_template="",
             max_txt_len=32,
@@ -68,10 +68,10 @@ class TimeChat(Blip2Base):
             low_resource=False,  # use 8 bit and put vit in cpu
             device_8bit=0,  # the device of 8bit model should be set when loading and cannot be changed anymore.
 
-            frozen_llama_proj=True,
+            frozen_llm_proj=True,
             frozen_video_Qformer=True,
 
-            llama_proj_model='',
+            phi2_proj_model='',
             fusion_header_type="seqTransf",
             max_frame_pos=32,
             fusion_head_layers=2,
@@ -132,16 +132,29 @@ class TimeChat(Blip2Base):
             logging.info("freeze Qformer")
         logging.info('Loading Q-Former Done')
 
-        logging.info('Loading LLAMA Tokenizer')
-        self.llama_tokenizer = LlamaTokenizer.from_pretrained(llama_model, use_fast=False)
-        if self.llama_tokenizer.pad_token is None:
-            self.llama_tokenizer.pad_token = self.llama_tokenizer.unk_token
+        logging.info('Loading LLM Tokenizer')
+        self.llm_tokenizer = AutoTokenizer.from_pretrained(phi2_model, use_fast=False)
+        if self.llm_tokenizer.pad_token is None:
+            self.llm_tokenizer.pad_token = self.llm_tokenizer.unk_token
         DEFAULT_IMAGE_PATCH_TOKEN = '<ImageHere>'
-        self.llama_tokenizer.add_tokens([DEFAULT_IMAGE_PATCH_TOKEN], special_tokens=True)
+        self.llm_tokenizer.add_tokens([DEFAULT_IMAGE_PATCH_TOKEN], special_tokens=True)
 
-        self.IMAGE_PATCH_TOKEN_ID = self.llama_tokenizer.get_vocab()[DEFAULT_IMAGE_PATCH_TOKEN]
+        self.IMAGE_PATCH_TOKEN_ID = self.llm_tokenizer.get_vocab()[DEFAULT_IMAGE_PATCH_TOKEN]
 
-        logging.info('Loading LLAMA Model')
+        logging.info('Loading LLM Model')
+        if self.low_resource:
+            self.llm_model = AutoModelForCausalLM.from_pretrained(
+                phi2_model,
+                torch_dtype=torch.bfloat16,
+                load_in_8bit=True,
+                device_map={'':device_8bit}
+            )
+        else:
+            self.llm_model = AutoModelForCausalLM.from_pretrained(
+                phi2_model,
+                torch_dtype = torch.bfloat16
+            )
+        '''
         if self.low_resource:
             self.llama_model = LlamaForCausalLM.from_pretrained(
                 llama_model,
@@ -166,14 +179,15 @@ class TimeChat(Blip2Base):
                     llama_model,
                     torch_dtype=torch.bfloat16,
                 )
-
+        '''
         if use_grad_checkpoint:
-            logging.info("use gradient checkpointing for LLAMA")
-            self.llama_model.gradient_checkpointing_enable()
+            logging.info("use gradient checkpointing for LLM")
+            self.llm_model.gradient_checkpointing_enable()
 
-        for name, param in self.llama_model.named_parameters():
+        for name, param in self.llm_model.named_parameters():
             param.requires_grad = False
-        logging.info('Loading LLAMA Done')
+
+        logging.info('Loading LLM Done')
 
         self.lora = lora
         if self.lora:
@@ -187,29 +201,26 @@ class TimeChat(Blip2Base):
                 lora_dropout=0.1,
                 target_modules=['q_proj', 'k_proj', 'v_proj', 'o_proj']
             )
-            self.llama_model = get_peft_model(self.llama_model, config)
-            self.llama_model.print_trainable_parameters()
+            self.llm_model = get_peft_model(self.llm_model, config)
+            self.llm_model.print_trainable_parameters()
 
-        logging.info('Loading LLAMA proj')
-        self.llama_proj = nn.Linear(
-            self.Qformer.config.hidden_size, self.llama_model.config.hidden_size
+        logging.info('Loading LLM proj')
+        self.llm_proj = nn.Linear(
+            self.Qformer.config.hidden_size, self.llm_model.config.hidden_size
         )
-        if llama_proj_model:
-            print("load llama proj weight: {}".format(llama_proj_model))
-            llama_proj_weight = torch.load(llama_proj_model, map_location="cpu")
-            msg = self.load_state_dict(llama_proj_weight['model'], strict=False)
 
-        if frozen_llama_proj:
+
+        if frozen_llm_proj:
             #  todo frozen  llama_proj
-            for name, param in self.llama_proj.named_parameters():
+            for name, param in self.llm_proj.named_parameters():
                 param.requires_grad = False
-            logging.info('LLAMA proj is frozen')
+            logging.info('llm proj is frozen')
         else:
-            for name, param in self.llama_proj.named_parameters():
+            for name, param in self.llm_proj.named_parameters():
                 param.requires_grad = True
-            logging.info('LLAMA proj is not frozen')
+            logging.info('llm proj is not frozen')
 
-        logging.info('Loading llama_proj Done')
+        logging.info('Loading LLM proj Done')
 
         self.max_txt_len = max_txt_len
         self.end_sym = end_sym
@@ -276,6 +287,7 @@ class TimeChat(Blip2Base):
             image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(device) # (b t), tokens/image
 
             query_tokens = self.query_tokens.expand(image_embeds.shape[0], -1, -1) #num_img, num_query, h
+
             if self.qformer_text_input:
                 # timestamps_input_ids = einops.rearrange(timestamp["input_ids"], 'b t d -> (b t) d')
                 # timestamps_attention_mask = einops.rearrange(timestamp["attention_mask"], 'b t d -> (b t) d')
@@ -326,11 +338,11 @@ class TimeChat(Blip2Base):
                 )
                 video_hidden = video_query_output.last_hidden_state
 
-                inputs_llama = self.llama_proj(video_hidden)
-                atts_llama = torch.ones(inputs_llama.size()[:-1], dtype=torch.long).to(image_embeds.device)
+                inputs_llm = self.llm_proj(video_hidden)
+                atts_llm = torch.ones(inputs_llm.size()[:-1], dtype=torch.long).to(image_embeds.device)
             else:
                 # use clips
-                inputs_llama_list, atts_llama_list = [], []
+                inputs_llm_list, atts_llm_list = [], []
                 for i in range(0, time_length, self.stride):
                     clip_hidden_state = frame_hidden_state[:, i:i + self.window_size, ...]
                     clip_hidden_state = einops.rearrange(clip_hidden_state, 'b t q h -> b (t q) h', b=batch_size)
@@ -346,33 +358,33 @@ class TimeChat(Blip2Base):
                     )
                     video_hidden = video_query_output.last_hidden_state  # [bsz, t, dim]
 
-                    inputs_llama = self.llama_proj(video_hidden)
-                    atts_llama = torch.ones(inputs_llama.size()[:-1], dtype=torch.long).to(image_embeds.device)
-                    inputs_llama_list.append(inputs_llama)
-                    atts_llama_list.append(atts_llama)
+                    inputs_llm = self.llm_proj(video_hidden)
+                    atts_llm = torch.ones(inputs_llm.size()[:-1], dtype=torch.long).to(image_embeds.device)
+                    inputs_llm_list.append(inputs_llm)
+                    atts_llm_list.append(atts_llm)
 
-                inputs_llama = torch.cat(inputs_llama_list, dim=1)  # [bsz, t, dim]
-                atts_llama = torch.cat(atts_llama_list, dim=1)  # [bsz, t]
-        return inputs_llama, atts_llama
+                inputs_llm = torch.cat(inputs_llm_list, dim=1)  # [bsz, t, dim]
+                atts_llm = torch.cat(atts_llm_list, dim=1)  # [bsz, t]
+        return inputs_llm, atts_llm
 
     def prompt_wrap(self, img_embeds, atts_img, prompt):
         if prompt:
             batch_size = img_embeds.shape[0]
             # print(prompt)
             p_before, p_after = prompt.split('<ImageHere>') #before是文字，after是视频
-            p_before_tokens = self.llama_tokenizer(
+            p_before_tokens = self.llm_tokenizer(
                 p_before, return_tensors="pt", add_special_tokens=False).to(img_embeds.device)
-            p_after_tokens = self.llama_tokenizer(
+            p_after_tokens = self.llm_tokenizer(
                 p_after, return_tensors="pt", add_special_tokens=False).to(img_embeds.device)
             if self.lora:  # peft
-                p_before_embeds = self.llama_model.get_base_model().model.embed_tokens(
+                p_before_embeds = self.llm_model.get_base_model().model.embed_tokens(
                     p_before_tokens.input_ids).expand(batch_size, -1, -1)
-                p_after_embeds = self.llama_model.get_base_model().model.embed_tokens(p_after_tokens.input_ids).expand(
+                p_after_embeds = self.llm_model.get_base_model().model.embed_tokens(p_after_tokens.input_ids).expand(
                     batch_size, -1, -1)
             else:
-                p_before_embeds = self.llama_model.model.embed_tokens(p_before_tokens.input_ids).expand(batch_size, -1,
+                p_before_embeds = self.llm_model.model.embed_tokens(p_before_tokens.input_ids).expand(batch_size, -1,
                                                                                                         -1)
-                p_after_embeds = self.llama_model.model.embed_tokens(p_after_tokens.input_ids).expand(batch_size, -1,
+                p_after_embeds = self.llm_model.model.embed_tokens(p_after_tokens.input_ids).expand(batch_size, -1,
                                                                                                       -1)
             wrapped_img_embeds = torch.cat([p_before_embeds, img_embeds, p_after_embeds], dim=1)
             wrapped_atts_img = atts_img[:, :1].expand(-1, wrapped_img_embeds.shape[1])
@@ -417,9 +429,9 @@ class TimeChat(Blip2Base):
             temp_input_ids = copy.deepcopy(input_ids)
             temp_input_ids[temp_input_ids == im_patch_token_id] = 0 #图片id设为0
             if self.lora:
-                temp_input_embedding = self.llama_model.get_base_model().model.embed_tokens(temp_input_ids)
+                temp_input_embedding = self.llm_model.get_base_model().model.embed_tokens(temp_input_ids)
             else:
-                temp_input_embedding = self.llama_model.model.embed_tokens(temp_input_ids)
+                temp_input_embedding = self.llm_model.model.embed_tokens(temp_input_ids)
 
             new_input_embeds = []
             cur_image_idx = 0
@@ -446,7 +458,7 @@ class TimeChat(Blip2Base):
             targets = samples['labels']
             attention_mask = samples['attention_mask']
             with self.maybe_autocast():
-                outputs = self.llama_model(
+                outputs = self.llm_model(
                     inputs_embeds=inputs_embeds,
                     attention_mask=attention_mask,
                     return_dict=True,
@@ -467,11 +479,11 @@ class TimeChat(Blip2Base):
                 prompt = random.choice(self.prompt_list)
                 img_embeds, atts_img = self.prompt_wrap(img_embeds, atts_img, prompt)
 
-            self.llama_tokenizer.padding_side = "right"
+            self.llm_tokenizer.padding_side = "right"
 
             text = [t + self.end_sym for t in samples["text_input"]] #end_sym为句子休止符\n
 
-            to_regress_tokens = self.llama_tokenizer(
+            to_regress_tokens = self.llm_tokenizer(
                 text,
                 return_tensors="pt",
                 padding="longest",
@@ -481,7 +493,7 @@ class TimeChat(Blip2Base):
             ).to(image.device)
 
             targets = to_regress_tokens.input_ids.masked_fill(
-                to_regress_tokens.input_ids == self.llama_tokenizer.pad_token_id, -100
+                to_regress_tokens.input_ids == self.llm_tokenizer.pad_token_id, -100
             ) #?
 
             empty_targets = (
@@ -493,20 +505,20 @@ class TimeChat(Blip2Base):
             batch_size = img_embeds.shape[0]
             bos = torch.ones([batch_size, 1],
                              dtype=to_regress_tokens.input_ids.dtype,
-                             device=to_regress_tokens.input_ids.device) * self.llama_tokenizer.bos_token_id
+                             device=to_regress_tokens.input_ids.device) * self.llm_tokenizer.bos_token_id
             if self.lora:
-                bos_embeds = self.llama_model.get_base_model().model.embed_tokens(bos)
-                to_regress_embeds = self.llama_model.get_base_model().model.embed_tokens(to_regress_tokens.input_ids)
+                bos_embeds = self.llm_model.get_base_model().model.embed_tokens(bos)
+                to_regress_embeds = self.llm_model.get_base_model().model.embed_tokens(to_regress_tokens.input_ids)
             else:
-                bos_embeds = self.llama_model.model.embed_tokens(bos)
-                to_regress_embeds = self.llama_model.model.embed_tokens(to_regress_tokens.input_ids)
+                bos_embeds = self.llm_model.model.embed_tokens(bos)
+                to_regress_embeds = self.llm_model.model.embed_tokens(to_regress_tokens.input_ids)
             atts_bos = atts_img[:, :1]
 
             inputs_embeds = torch.cat([bos_embeds, img_embeds, to_regress_embeds], dim=1)
             attention_mask = torch.cat([atts_bos, atts_img, to_regress_tokens.attention_mask], dim=1)
 
             with self.maybe_autocast():
-                outputs = self.llama_model(
+                outputs = self.llm_model(
                     inputs_embeds=inputs_embeds,
                     attention_mask=attention_mask,
                     return_dict=True,
@@ -524,7 +536,7 @@ class TimeChat(Blip2Base):
                                  "https://storage.googleapis.com/sfr-vision-language-research/LAVIS/models/BLIP2/blip2_pretrained_flant5xxl.pth")
         img_size = cfg.get("image_size")
         num_query_token = cfg.get("num_query_token")
-        llama_model = cfg.get("phi2_model")
+        phi2_model = cfg.get("phi2_model")
 
         drop_path_rate = cfg.get("drop_path_rate", 0)
         use_grad_checkpoint = cfg.get("use_grad_checkpoint", False)
@@ -541,10 +553,10 @@ class TimeChat(Blip2Base):
         max_txt_len = cfg.get("max_txt_len", 32)
         end_sym = cfg.get("end_sym", '\n')
 
-        frozen_llama_proj = cfg.get("frozen_llama_proj", True)
+        frozen_llm_proj = cfg.get("frozen_llm_proj", True)
         frozen_video_Qformer = cfg.get("frozen_video_Qformer", True)
 
-        llama_proj_model = cfg.get("llama_proj_model", '')
+        #llama_proj_model = cfg.get("llama_proj_model", '')
 
         fusion_header_type = cfg.get("fusion_header_type", 'seqTransf')
         max_frame_pos = cfg.get("max_frame_pos", 32)
@@ -565,7 +577,7 @@ class TimeChat(Blip2Base):
             freeze_vit=freeze_vit,
             freeze_qformer=freeze_qformer,
             num_query_token=num_query_token,
-            llama_model=llama_model,
+            phi2_model=phi2_model,
             prompt_path=prompt_path,
             prompt_template=prompt_template,
             max_txt_len=max_txt_len,
@@ -575,10 +587,10 @@ class TimeChat(Blip2Base):
             fusion_header_type=fusion_header_type,
             max_frame_pos=max_frame_pos,
             fusion_head_layers=fusion_head_layers,
-            frozen_llama_proj=frozen_llama_proj,
+            frozen_llm_proj=frozen_llm_proj,
             frozen_video_Qformer=frozen_video_Qformer,
             num_video_query_token=num_video_query_token,
-            llama_proj_model=llama_proj_model,
+            #llama_proj_model=llama_proj_model,
             lora=lora,
             qformer_text_input=qformer_text_input,
             lora_inference_mode=lora_inference_mode,
