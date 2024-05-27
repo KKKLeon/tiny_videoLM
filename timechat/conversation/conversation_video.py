@@ -319,7 +319,7 @@ class Chat:
         prompt_segs = prompt.split('<ImageHere>') #前面的到<image><ImageHere>为止
         assert len(prompt_segs) == len(img_list) + 1, "Unmatched numbers of image placeholders and images."
         seg_tokens = [
-            self.model.llama_tokenizer(
+            self.model.llm_tokenizer(
                 seg, return_tensors="pt", add_special_tokens=i == 0).to(self.device).input_ids
             # only add bos to the first seg
             for i, seg in enumerate(prompt_segs)
