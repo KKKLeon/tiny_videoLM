@@ -31,6 +31,8 @@ from torchvision.datasets.utils import (
     extract_archive,
 )
 
+from transformers import StoppingCriteria
+
 
 def now():
     from datetime import datetime
