@@ -19,31 +19,7 @@ from timechat.common.registry import registry
 from timechat.processors.video_processor import ToTHWC, ToUint8, load_video
 from timechat.processors import Blip2ImageEvalProcessor
 
-class KeywordsStoppingCriteria(StoppingCriteria):
-    def __init__(self, keywords, tokenizer, input_ids):
-        self.keywords = keywords
-        self.keyword_ids = []
-        for keyword in keywords:
-            cur_keyword_ids = tokenizer(keyword).input_ids
-            if len(cur_keyword_ids) > 1 and cur_keyword_ids[0] == tokenizer.bos_token_id:
-                cur_keyword_ids = cur_keyword_ids[1:]
-            self.keyword_ids.append(torch.tensor(cur_keyword_ids))
-        self.tokenizer = tokenizer
-        self.start_len = input_ids.shape[1]
 
-    def __call__(self, output_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
-        assert output_ids.shape[0] == 1, "Only support batch size 1 (yet)"  # TODO
-        offset = min(output_ids.shape[1] - self.start_len, 3)
-        self.keyword_ids = [keyword_id.to(output_ids.device) for keyword_id in self.keyword_ids]
-        for keyword_id in self.keyword_ids:
-            if output_ids[0, -keyword_id.shape[0]:] == keyword_id:
-                return True
-        outputs = self.tokenizer.batch_decode(output_ids[:, -offset:], skip_special_tokens=True)[0]
-        for keyword in self.keywords:
-            if keyword in outputs:
-                return True
-        return False
-        
 class SeparatorStyle(Enum):
     """Different separator style."""
     SINGLE = auto()
@@ -203,6 +179,30 @@ conv_llava_llama_2 = Conversation(
     sep2="</s>",
 )
 
+class KeywordsStoppingCriteria(StoppingCriteria):
+    def __init__(self, keywords, tokenizer, input_ids):
+        self.keywords = keywords
+        self.keyword_ids = []
+        for keyword in keywords:
+            cur_keyword_ids = tokenizer(keyword).input_ids
+            if len(cur_keyword_ids) > 1 and cur_keyword_ids[0] == tokenizer.bos_token_id:
+                cur_keyword_ids = cur_keyword_ids[1:]
+            self.keyword_ids.append(torch.tensor(cur_keyword_ids))
+        self.tokenizer = tokenizer
+        self.start_len = input_ids.shape[1]
+
+    def __call__(self, output_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+        assert output_ids.shape[0] == 1, "Only support batch size 1 (yet)"  # TODO
+        offset = min(output_ids.shape[1] - self.start_len, 3)
+        self.keyword_ids = [keyword_id.to(output_ids.device) for keyword_id in self.keyword_ids]
+        for keyword_id in self.keyword_ids:
+            if output_ids[0, -keyword_id.shape[0]:] == keyword_id:
+                return True
+        outputs = self.tokenizer.batch_decode(output_ids[:, -offset:], skip_special_tokens=True)[0]
+        for keyword in self.keywords:
+            if keyword in outputs:
+                return True
+        return False
 
 class Chat:
     def __init__(self, model, vis_processor, device='cuda:0'):
@@ -234,6 +234,12 @@ class Chat:
         begin_idx = max(0, current_max_len - max_length)
 
         embs = embs[:, begin_idx:]
+        input_ids = embs.input_ids
+        stop_str = conv.sep2
+        keywords = [stop_str]
+        stopping_criteria = KeywordsStoppingCriteria(keywords, self.model.llm_tokenizer, input_ids)
+
+        '''
         if conv.sep == "###":
             stop_words_ids = [torch.tensor([835]).to(self.device),
                               torch.tensor([2277, 29937]).to(
@@ -242,12 +248,12 @@ class Chat:
         else:
             stop_words_ids = [torch.tensor([2]).to(self.device)]
             stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stops=stop_words_ids)])
-
+        '''
         # stopping_criteria
-        outputs = self.model.llama_model.generate(
-            inputs_embeds=embs,
+        outputs = self.model.phi2_model.generate(
+            input_ids=input_ids,
             max_new_tokens=max_new_tokens,
-            stopping_criteria=stopping_criteria,
+            stopping_criteria=[stopping_criteria],
             num_beams=num_beams,
             do_sample=True,
             min_length=min_length,
@@ -256,18 +262,18 @@ class Chat:
             length_penalty=length_penalty,
             temperature=temperature,
         )
-        output_token = outputs[0]
+
+        '''
         if output_token[0] == 0:  # the model might output a unknow token <unk> at the beginning. remove it
             output_token = output_token[1:]
         if output_token[0] == 1:  # some users find that there is a start token <s> at the beginning. remove it
             output_token = output_token[1:]
-        output_text = self.model.llama_tokenizer.decode(output_token, add_special_tokens=False)
-        if conv.sep == "###":
-            output_text = output_text.split('###')[0]  # remove the stop sign '###'
-            output_text = output_text.split('Assistant:')[-1].strip()
-        else:
-            output_text = output_text.split(conv.sep2)[0]  # remove the stop sign '###'
-            output_text = output_text.split(conv.roles[1] + ':')[-1].strip()
+        '''
+        output_text = self.model.llm_tokenizer.decode(outputs, add_special_tokens=False)[0]
+
+        output_token = outputs[0]
+        output_text = output_text.split(conv.sep2)[0]  # remove the stop sign '###'
+        output_text = output_text.split(conv.roles[1] + ':')[-1].strip()
         conv.messages[-1][1] = output_text
         return output_text, output_token.cpu().numpy()
 
@@ -287,7 +293,7 @@ class Chat:
             video = self.vis_processor.transform(video)
             video = video.unsqueeze(0).to(self.device) # B C T H W
             # print(image)
-            '''
+
             if self.model.qformer_text_input:
                 # timestamp
                 timestamps = msg.split('at')[1].replace('seconds.', '').strip().split(
@@ -300,7 +306,7 @@ class Chat:
                     max_length=32,
                     truncation=True,
                 )
-            '''
+
         else:
             raise NotImplementedError
         # conv.system = "You can understand the video that the user provides.  Follow the instructions carefully and explain your answers in detail."
@@ -348,9 +354,9 @@ class Chat:
             for i, seg in enumerate(prompt_segs)
         ]
         if self.model.lora:
-            seg_embs = [self.model.llama_model.get_base_model().model.embed_tokens(seg_t) for seg_t in seg_tokens]
+            seg_embs = [self.model.llm_model.get_base_model().model.embed_tokens(seg_t) for seg_t in seg_tokens]
         else:
-            seg_embs = [self.model.llama_model.model.embed_tokens(seg_t) for seg_t in seg_tokens]
+            seg_embs = [self.model.llm_model.model.embed_tokens(seg_t) for seg_t in seg_tokens]
         mixed_embs = [emb for pair in zip(seg_embs[:-1], img_list) for emb in pair] + [seg_embs[-1]]
         mixed_embs = torch.cat(mixed_embs, dim=1)
         return mixed_embs
