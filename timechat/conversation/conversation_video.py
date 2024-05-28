@@ -160,7 +160,6 @@ conv_phi_v0 = Conversation(
            "You are able to understand the visual content that the user provides, "
            "and assist the user with a variety of tasks using natural language.",
     roles=("USER", "ASSISTANT"),
-    version="v0",
     messages=(),
     offset=0,
     sep_style=SeparatorStyle.TWO,
