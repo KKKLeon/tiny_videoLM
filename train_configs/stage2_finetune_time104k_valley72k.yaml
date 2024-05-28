@@ -8,14 +8,14 @@ model:
   # Q-Former
   num_query_token: 32
 
-  vit_model: "ckpt/eva-vit-g/eva_vit_g.pth"
-  llama_model: "ckpt/Video-LLaMA-2-7B-Finetuned/llama-2-7b-chat-hf/"
-  q_former_model: "ckpt/instruct-blip/instruct_blip_vicuna7b_trimmed.pth"
+  vit_model: "ckpt/umt-l/l16_25m.pth"
+  phi2_model: "ckpt/Video-LLaMA-2-7B-Finetuned/phi-2/"
+  q_former_model: "ckpt/instruct-blip/umt_l16_qformer.pth"
   ckpt: "ckpt/Video-LLaMA-2-7B-Finetuned/VL_LLaMA_2_7B_Finetuned.pth"
 
 
   # only train vision branch
-  frozen_llama_proj: False
+  frozen_llm_proj: False
   frozen_video_Qformer: False
 
   fusion_head_layers: 2
@@ -61,7 +61,7 @@ datasets:
   valley72k_instruct:
     data_type: video
     build_info:
-      anno_dir: "data/TimeIT/data/valley/instruct_valley_72k.json"
+      anno_dir: "data/valley_instruct_65k.json"
       videos_dir: "data/"
     vis_processor:
       train:
@@ -72,8 +72,8 @@ datasets:
       train:
         name: "blip_caption"
     num_video_query_token: 32
-    tokenizer_name: "ckpt/Video-LLaMA-2-7B-Finetuned/llama-2-7b-chat-hf/"
-    model_type: "llama_v2"
+    tokenizer_name: "ckpt/Video-LLaMA-2-7B-Finetuned/phi-2/"
+    model_type: "phi2"
     num_frm: 96
     sample_type: 'rand'
     max_txt_len: 2048
