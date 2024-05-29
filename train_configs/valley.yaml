@@ -9,6 +9,23 @@ model:
   num_query_token: 32
 
   vit_model: "ckpt/umt-l/l16_25m.pth"
+  vision_encoder:
+    name: "vit_l14"
+    img_size: 224
+    patch_size: 16
+    d_model: 1024
+    encoder_embed_dim: 1024
+    encoder_depth: 24
+    encoder_num_heads: 16
+    drop_path_rate: 0.0
+    num_frames: 32
+    tubelet_size: 1
+    use_checkpoint: false
+    checkpoint_num: 0
+    pretrained: ""
+    return_index: -2
+    vit_add_ln: true
+    ckpt_num_frame: 4
   phi2_model: "ckpt/Video-LLaMA-2-7B-Finetuned/phi-2/"
   q_former_model: "ckpt/instruct-blip/umt_l16_qformer.pth"
   ckpt: "ckpt/Video-LLaMA-2-7B-Finetuned/VL_LLaMA_2_7B_Finetuned.pth"
