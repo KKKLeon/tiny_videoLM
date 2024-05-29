@@ -18,7 +18,7 @@ model:
     encoder_depth: 24
     encoder_num_heads: 16
     drop_path_rate: 0.0
-    num_frames: 32
+    num_frames: 96
     tubelet_size: 1
     use_checkpoint: false
     checkpoint_num: 0
