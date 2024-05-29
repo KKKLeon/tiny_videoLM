@@ -6,3 +6,7 @@ To download the dataset, you need to go to https://huggingface.co/datasets/luoru
 
 26.05 update:
 change LLM backbone to Phi2.
+
+27.05 update:
+1. update train yaml.
+2. To adpat valley json to train, use utils/valley.py to process the annotation file.
