@@ -180,7 +180,7 @@ conv_llava_llama_2 = Conversation(
 )
 
 class KeywordsStoppingCriteria(StoppingCriteria):
-    def __init__(self, keywords, tokenizer, input_ids):
+    def __init__(self, keywords, tokenizer, input_embs):
         self.keywords = keywords
         self.keyword_ids = []
         for keyword in keywords:
@@ -189,13 +189,15 @@ class KeywordsStoppingCriteria(StoppingCriteria):
                 cur_keyword_ids = cur_keyword_ids[1:]
             self.keyword_ids.append(torch.tensor(cur_keyword_ids))
         self.tokenizer = tokenizer
-        self.start_len = input_ids.shape[1]
+        self.start_len = input_embs.shape[1]
 
     def __call__(self, output_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
         assert output_ids.shape[0] == 1, "Only support batch size 1 (yet)"  # TODO
         offset = min(output_ids.shape[1] - self.start_len, 3)
         self.keyword_ids = [keyword_id.to(output_ids.device) for keyword_id in self.keyword_ids]
         for keyword_id in self.keyword_ids:
+            #print(keyword_id.shape)
+            #print(output_ids.shape)
             if output_ids[0, -keyword_id.shape[0]:] == keyword_id:
                 return True
         outputs = self.tokenizer.batch_decode(output_ids[:, -offset:], skip_special_tokens=True)[0]
@@ -234,10 +236,9 @@ class Chat:
         begin_idx = max(0, current_max_len - max_length)
 
         embs = embs[:, begin_idx:]
-        input_ids = embs.input_ids
         stop_str = conv.sep2
         keywords = [stop_str]
-        stopping_criteria = KeywordsStoppingCriteria(keywords, self.model.llm_tokenizer, input_ids)
+        stopping_criteria = KeywordsStoppingCriteria(keywords, self.model.llm_tokenizer, embs)
 
         '''
         if conv.sep == "###":
@@ -250,8 +251,12 @@ class Chat:
             stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stops=stop_words_ids)])
         '''
         # stopping_criteria
-        outputs = self.model.phi2_model.generate(
-            input_ids=input_ids,
+        #print("embs type is ", embs.dtype)
+        embs = embs.to(torch.bfloat16)
+        #print("embs type is ", embs.dtype)
+        #print("conv is", conv.messages)
+        outputs = self.model.llm_model.generate(
+            inputs_embeds=embs,
             max_new_tokens=max_new_tokens,
             stopping_criteria=[stopping_criteria],
             num_beams=num_beams,
@@ -262,19 +267,24 @@ class Chat:
             length_penalty=length_penalty,
             temperature=temperature,
         )
-
+        #print("output is", outputs.shape)
         '''
         if output_token[0] == 0:  # the model might output a unknow token <unk> at the beginning. remove it
             output_token = output_token[1:]
         if output_token[0] == 1:  # some users find that there is a start token <s> at the beginning. remove it
             output_token = output_token[1:]
         '''
-        output_text = self.model.llm_tokenizer.decode(outputs, add_special_tokens=False)[0]
-
+        output_text = self.model.llm_tokenizer.batch_decode(outputs, add_special_tokens=False)[0]
+        #print("output text is", output_text)
         output_token = outputs[0]
         output_text = output_text.split(conv.sep2)[0]  # remove the stop sign '###'
+        #print("output text is", output_text)
         output_text = output_text.split(conv.roles[1] + ':')[-1].strip()
         conv.messages[-1][1] = output_text
+
+
+        #print("conv is", conv.messages)
+        #print("output text is", outputs)
         return output_text, output_token.cpu().numpy()
 
     def upload_video_without_audio(self, video_path, conv, img_list, n_frms=8):
@@ -315,6 +325,7 @@ class Chat:
         else:
             image_emb, _ = self.model.encode_videoQformer_visual(video)
         img_list.append(image_emb)
+        print("img emds", image_emb.shape)
         #msg=The video contains {len(indices)} frames sampled at {sec} seconds.
         conv.append_message(conv.roles[0], "<Video><ImageHere></Video> " + msg)
         return "Received."
@@ -344,7 +355,7 @@ class Chat:
 
     def get_context_emb(self, conv, img_list):
         prompt = conv.get_prompt()
-        #print(prompt)
+        print("prompt is ", prompt)
         prompt_segs = prompt.split('<ImageHere>') #前面的到<image><ImageHere>为止
         assert len(prompt_segs) == len(img_list) + 1, "Unmatched numbers of image placeholders and images."
         seg_tokens = [
@@ -353,10 +364,17 @@ class Chat:
             # only add bos to the first seg
             for i, seg in enumerate(prompt_segs)
         ]
+
         if self.model.lora:
             seg_embs = [self.model.llm_model.get_base_model().model.embed_tokens(seg_t) for seg_t in seg_tokens]
         else:
             seg_embs = [self.model.llm_model.model.embed_tokens(seg_t) for seg_t in seg_tokens]
+        print("text embedding shape ",seg_embs[0].shape)
         mixed_embs = [emb for pair in zip(seg_embs[:-1], img_list) for emb in pair] + [seg_embs[-1]]
+        print("text embedding shape ", len(mixed_embs))
+        print("text embedding shape ", mixed_embs[0].shape)
+        print("text embedding shape ", mixed_embs[1].shape)
+        print("text embedding shape ", mixed_embs[2].shape)
         mixed_embs = torch.cat(mixed_embs, dim=1)
+        print("text embedding shape ", mixed_embs.shape)
         return mixed_embs
