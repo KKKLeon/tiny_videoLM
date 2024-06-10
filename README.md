@@ -10,3 +10,6 @@ change LLM backbone to Phi2.
 27.05 update:
 1. update train yaml.
 2. To adpat valley json to train, use utils/valley.py to process the annotation file.
+
+10.06 update:
+fix some bugs so that the model can successfully run with phi2
