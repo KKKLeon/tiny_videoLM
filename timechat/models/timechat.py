@@ -34,7 +34,6 @@ class TimeChat(Blip2Base):
     @classmethod
     def init_video_Qformer(cls, num_query_token, vision_width, num_hidden_layers=2):
         encoder_config = BertConfig.from_pretrained("bert-base-uncased") #Bert作为Qformer
-        encoder_config.vocab_size = 51200 # same as phi2
         encoder_config.num_hidden_layers = num_hidden_layers
         encoder_config.encoder_width = vision_width
         # insert cross-attention layer every other block
