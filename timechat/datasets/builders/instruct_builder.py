@@ -33,11 +33,6 @@ class Image_Instruct_Builder(BaseDatasetBuilder):
         else:
             num_video_query_token = 32
 
-        if self.config.tokenizer_name:
-            tokenizer_name = self.config.tokenizer_name
-        else:
-            tokenizer_name = '/mnt/workspace/ckpt/vicuna-13b/'
-
         model_type = self.config.model_type if self.config.model_type else 'vicuna'
 
         datasets[split] = dataset_cls(
