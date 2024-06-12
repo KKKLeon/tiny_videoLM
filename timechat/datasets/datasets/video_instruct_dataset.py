@@ -43,7 +43,7 @@ IGNORE_INDEX = -100
 
 class Video_Instruct_Dataset(BaseDataset):
     def __init__(self, vis_processor, text_processor, vis_root, ann_root, num_video_query_token=32,
-                 tokenizer_name='/mnt/workspace/ckpt/vicuna-13b/', data_type='video', model_type='vicuna', num_frm=8,
+                 data_type='video', model_type='vicuna', num_frm=8,
                  sample_type='rand', max_txt_len=512, stride=32):
         """
         vis_root (string): Root directory of Llava images (e.g. webvid_eval/video/)
