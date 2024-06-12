@@ -13,7 +13,7 @@ from typing import Dict, Optional, Sequence
 import transformers
 import pathlib
 import json
-from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaTokenizer, BertTokenizer
 import copy
 from timechat.processors import transforms_video, AlproVideoTrainProcessor
 from torchvision import transforms
@@ -28,6 +28,17 @@ video_conversation = Conversation(
     offset=0,
     sep_style=SeparatorStyle.SINGLE,
     sep="###",
+)
+conv_phi_v0 = Conversation(
+    system="You are a helpful language and vision assistant. "
+           "You are able to understand the visual content that the user provides, "
+           "and assist the user with a variety of tasks using natural language.",
+    roles=("USER", "ASSISTANT"),
+    messages=(),
+    offset=0,
+    sep_style=SeparatorStyle.TWO,
+    sep=" ",
+    sep2="<|endoftext|>",
 )
 llama_v2_video_conversation = Conversation(
     system=" ",
@@ -127,10 +138,12 @@ class Video_Instruct_Dataset(BaseDataset):
                 # image exist in the data
                 data_dict['image'] = video
                 # timestamp
+                qformer_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+                qformer_tokenizer.add_special_tokens({"bos_token": "[DEC]"})
                 all_timestamps = msg.split('at')[1].replace('seconds.', '').strip().split(
                     ',')  # extract timestamps from msg
                 all_timestamps = [f'This frame is sampled at {t.strip()} second.' for t in all_timestamps]
-                all_timestamps = self.tokenizer(
+                all_timestamps = qformer_tokenizer(
                     all_timestamps,
                     return_tensors="pt",
                     padding="longest",
