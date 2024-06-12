@@ -13,3 +13,6 @@ change LLM backbone to Phi2.
 
 10.06 update:
 fix some bugs so that the model can successfully run with phi2
+
+12.06 update:
+change the tokenizer of Qformer as BERT tokenizer to avoid confusion, see (https://github.com/RenShuhuai-Andy/TimeChat) issue 19 for details.
