@@ -13,7 +13,7 @@ from typing import Dict, Optional, Sequence
 import transformers
 import pathlib
 import json
-from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaTokenizer, BertTokenizer
 import copy
 from timechat.processors import transforms_video, AlproVideoTrainProcessor
 from torchvision import transforms
@@ -60,7 +60,8 @@ class Video_Instruct_Dataset(BaseDataset):
         self.vis_root = vis_root
         self.resize_size = 224
         self.num_frm = num_frm
-        self.tokenizer = LlamaTokenizer.from_pretrained(tokenizer_name, use_fast=False)
+        self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+        self.tokenizer.add_special_tokens({"bos_token": "[DEC]"})
         self.tokenizer.pad_token = self.tokenizer.unk_token
         self.tokenizer.add_tokens([DEFAULT_IMAGE_PATCH_TOKEN], special_tokens=True)
         self.IMAGE_PATCH_TOKEN_ID = self.tokenizer.get_vocab()[DEFAULT_IMAGE_PATCH_TOKEN]
