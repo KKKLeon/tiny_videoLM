@@ -13,7 +13,7 @@ from typing import Dict, Optional, Sequence
 import transformers
 import pathlib
 import json
-from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaTokenizer, BertTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaTokenizer
 import copy
 from timechat.processors import transforms_video, AlproVideoTrainProcessor
 from torchvision import transforms
@@ -43,7 +43,7 @@ IGNORE_INDEX = -100
 
 class Video_Instruct_Dataset(BaseDataset):
     def __init__(self, vis_processor, text_processor, vis_root, ann_root, num_video_query_token=32,
-                 data_type='video', model_type='vicuna', num_frm=8,
+                 tokenizer_name='/mnt/workspace/ckpt/vicuna-13b/',data_type='video', model_type='vicuna', num_frm=8,
                  sample_type='rand', max_txt_len=512, stride=32):
         """
         vis_root (string): Root directory of Llava images (e.g. webvid_eval/video/)
@@ -60,8 +60,7 @@ class Video_Instruct_Dataset(BaseDataset):
         self.vis_root = vis_root
         self.resize_size = 224
         self.num_frm = num_frm
-        self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-        self.tokenizer.add_special_tokens({"bos_token": "[DEC]"})
+        self.tokenizer = LlamaTokenizer.from_pretrained(tokenizer_name, use_fast=False)
         self.tokenizer.pad_token = self.tokenizer.unk_token
         self.tokenizer.add_tokens([DEFAULT_IMAGE_PATCH_TOKEN], special_tokens=True)
         self.IMAGE_PATCH_TOKEN_ID = self.tokenizer.get_vocab()[DEFAULT_IMAGE_PATCH_TOKEN]
