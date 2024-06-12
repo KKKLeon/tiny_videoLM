@@ -68,6 +68,7 @@ datasets:
       train:
         name: "blip_caption"
     num_video_query_token: 32
+    tokenizer_name: "ckpt/Video-LLaMA-2-7B-Finetuned/phi-2/"
     model_type: "phi2"
     num_frm: 96
     sample_type: 'rand'
