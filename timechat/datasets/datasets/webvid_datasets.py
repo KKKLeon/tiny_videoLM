@@ -8,6 +8,9 @@
 import os
 from timechat.datasets.datasets.base_dataset import BaseDataset
 from timechat.datasets.datasets.caption_datasets import CaptionDataset
+import os
+from timechat.datasets.datasets.base_dataset import BaseDataset
+from timechat.datasets.datasets.caption_datasets import CaptionDataset
 import pandas as pd
 import decord
 from decord import VideoReader
@@ -57,7 +60,7 @@ class WebvidDataset(BaseDataset):
                 raise NotImplementedError("Un-supported text annotation format.")
 
             # fetch video
-            video_path = self._get_video_path(sample_dict) 
+            video_path = self._get_video_path(sample_dict)
             # if os.path.exists(video_path):
             try:
                 video = self.vis_processor(video_path)
@@ -118,5 +121,4 @@ class WebvidDatasetEvalDataset(BaseDataset):
             "image_id": ann["image_id"],
             "instance_id": ann["instance_id"],
         }
-
 
